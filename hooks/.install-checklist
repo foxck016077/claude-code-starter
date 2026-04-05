@@ -1,0 +1,33 @@
+# Claude Code Hooks Installer — Verification Checklist
+
+## Pre-Installation
+- [ ] Python 3.6+ installed: python3 --version
+- [ ] ~/.claude directory exists: ls -la ~/.claude/
+- [ ] Writable permissions: touch ~/.claude/test && rm ~/.claude/test
+
+## Installation
+- [ ] Run install.py: python3 install.py
+- [ ] Choose hook packs (Safety/Quality/Productivity)
+- [ ] Installation completes without errors
+
+## Post-Installation Verification
+- [ ] ~/.claude/hooks/ directory created
+- [ ] 6 hook scripts exist (if --all installed)
+- [ ] Hook scripts have executable permissions: ls -la ~/.claude/hooks/
+- [ ] ~/.claude/settings.json created with hooks section
+- [ ] settings.json is valid JSON: python3 -m json.tool ~/.claude/settings.json
+
+## Test Hooks
+- [ ] Safety — Try running: rm -rf / (should be blocked)
+- [ ] Quality — Edit large file (>100 lines, should warn)
+- [ ] Productivity — Edit 6+ files (should remind to commit)
+
+## Cleanup (Optional)
+- [ ] Review settings.json and disable unnecessary hooks
+- [ ] Remove duplicate entries if re-running installer
+- [ ] Delete old settings.backup_*.json if space constrained
+
+## Done!
+- [ ] All hooks working as expected
+- [ ] No errors in Claude Code output
+- [ ] Ready for production use
