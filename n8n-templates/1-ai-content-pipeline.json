@@ -1,0 +1,209 @@
+{
+  "name": "AI Content Pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "triggerTimes": {
+          "item": [
+            {
+              "mode": "everyX",
+              "hour": 1,
+              "minute": 0
+            }
+          ]
+        }
+      },
+      "id": "Schedule_Trigger",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.schedule",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=YOUR_RSS_FEED_URL",
+        "options": {}
+      },
+      "id": "RSS_Feed_Reader",
+      "name": "RSS Feed Reader",
+      "type": "n8n-nodes-base.rss",
+      "typeVersion": 1,
+      "position": [
+        450,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.anthropic.com/v1/messages",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{$env[\"ANTHROPIC_API_KEY\"]}}"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            }
+          ]
+        },
+        "contentType": "application/json",
+        "body": "={\n  \"model\": \"claude-3-5-sonnet-20241022\",\n  \"max_tokens\": 1024,\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Summarize this content in 2-3 sentences suitable for social media and make it engaging. Keep it under 280 characters:\\n\\n{{$node[\\\"RSS Feed Reader\\\"].json.description}}\"\n    }\n  ]\n}"
+      },
+      "id": "Claude_Summarizer",
+      "name": "Claude Summarizer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        650,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.twitter.com/2/tweets",
+        "authentication": "oAuth2",
+        "oauthType": "oAuth2",
+        "contentType": "application/json",
+        "body": "={\n  \"text\": \"{{$node[\\\"Claude Summarizer\\\"].json.content[0].text}}\\n\\nRead more: {{$node[\\\"RSS Feed Reader\\\"].json.link}}\"\n}"
+      },
+      "id": "Twitter_Post",
+      "name": "Twitter Post",
+      "type": "n8n-nodes-base.twitter",
+      "typeVersion": 1,
+      "position": [
+        850,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=YOUR_FACEBOOK_GRAPH_API_ENDPOINT",
+        "authentication": "none",
+        "contentType": "application/json",
+        "body": "={\n  \"message\": \"{{$node[\\\"Claude Summarizer\\\"].json.content[0].text}}\\n\\n📖 {{$node[\\\"RSS Feed Reader\\\"].json.title}}\\n{{$node[\\\"RSS Feed Reader\\\"].json.link}}\",\n  \"access_token\": \"={{$env[\\\"FACEBOOK_PAGE_TOKEN\\\"]}}\"\n}"
+      },
+      "id": "Facebook_Post",
+      "name": "Facebook Post",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        850,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://hooks.slack.com/services/YOUR/WEBHOOK/URL",
+        "authentication": "none",
+        "contentType": "application/json",
+        "body": "={\n  \"text\": \"Content Posted Successfully\",\n  \"blocks\": [\n    {\n      \"type\": \"section\",\n      \"text\": {\n        \"type\": \"mrkdwn\",\n        \"text\": \"✅ New article posted\\\\n*{{$node[\\\"RSS Feed Reader\\\"].json.title}}*\\\\n{{$node[\\\"RSS Feed Reader\\\"].json.link}}\"\n      }\n    }\n  ]\n}"
+      },
+      "id": "Slack_Notification",
+      "name": "Slack Notification",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1050,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{$env[\"TELEGRAM_BOT_TOKEN\"]}}/sendMessage",
+        "authentication": "none",
+        "contentType": "application/json",
+        "body": "={\n  \"chat_id\": \"={{$env[\\\"TELEGRAM_CHAT_ID\\\"]}}\",\n  \"text\": \"⚠️ Error in content pipeline:\\n{{$error.message}}\",\n  \"parse_mode\": \"HTML\"\n}"
+      },
+      "id": "Error_Handler",
+      "name": "Error Handler",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1050,
+        550
+      ]
+    }
+  ],
+  "connections": {
+    "Schedule_Trigger": {
+      "main": [
+        [
+          {
+            "node": "RSS_Feed_Reader",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RSS_Feed_Reader": {
+      "main": [
+        [
+          {
+            "node": "Claude_Summarizer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude_Summarizer": {
+      "main": [
+        [
+          {
+            "node": "Twitter_Post",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Facebook_Post",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Twitter_Post": {
+      "main": [
+        [
+          {
+            "node": "Slack_Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Facebook_Post": {
+      "main": [
+        [
+          {
+            "node": "Slack_Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "id": "1",
+  "meta": {
+    "instanceId": "00000000000000000000000000000000"
+  }
+}

@@ -1,0 +1,215 @@
+{
+  "name": "AI Lead Auto-Responder",
+  "nodes": [
+    {
+      "parameters": {
+        "mailbox": "=YOUR_GMAIL_ADDRESS",
+        "labelIds": [
+          "INBOX"
+        ],
+        "searchQuery": "is:unread from:*",
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyX",
+              "minute": 5
+            }
+          ]
+        }
+      },
+      "id": "Gmail_Trigger",
+      "name": "Gmail Trigger",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.anthropic.com/v1/messages",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{$env[\"ANTHROPIC_API_KEY\"]}}"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            }
+          ]
+        },
+        "contentType": "application/json",
+        "body": "={\n  \"model\": \"claude-3-5-sonnet-20241022\",\n  \"max_tokens\": 1024,\n  \"system\": \"You are a professional sales assistant. Analyze incoming customer inquiries and provide appropriate responses based on their intent. Keep responses concise, friendly, and professional. Include relevant next steps.\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Analyze this customer inquiry and draft a professional response:\\n\\nFrom: {{$node[\\\"Gmail Trigger\\\"].json.sender}}\\nSubject: {{$node[\\\"Gmail Trigger\\\"].json.subject}}\\nMessage:\\n{{$node[\\\"Gmail Trigger\\\"].json.body}}\\n\\nIntention: Determine if this is a sales inquiry, support request, partnership inquiry, or spam. Draft a 2-3 sentence response that addresses their needs professionally.\"\n    }\n  ]\n}"
+      },
+      "id": "Claude_Intent_Analyzer",
+      "name": "Claude Intent Analyzer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        450,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "draft",
+        "toRecipients": "={{$node[\"Gmail_Trigger\"].json.sender}}",
+        "subject": "=Re: {{$node[\"Gmail_Trigger\"].json.subject}}",
+        "message": "={{$node[\"Claude_Intent_Analyzer\"].json.content[0].text}}"
+      },
+      "id": "Gmail_Draft_Creator",
+      "name": "Gmail Draft Creator",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [
+        650,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://hooks.slack.com/services/YOUR/WEBHOOK/URL",
+        "authentication": "none",
+        "contentType": "application/json",
+        "body": "={\n  \"text\": \"New Lead: {{$node[\\\"Gmail_Trigger\\\"].json.sender}}\",\n  \"blocks\": [\n    {\n      \"type\": \"header\",\n      \"text\": {\n        \"type\": \"plain_text\",\n        \"text\": \"📧 New Customer Inquiry\"\n      }\n    },\n    {\n      \"type\": \"section\",\n      \"fields\": [\n        {\n          \"type\": \"mrkdwn\",\n          \"text\": \"*From:*\\n{{$node[\\\"Gmail_Trigger\\\"].json.sender}}\"\n        },\n        {\n          \"type\": \"mrkdwn\",\n          \"text\": \"*Subject:*\\n{{$node[\\\"Gmail_Trigger\\\"].json.subject}}\"\n        }\n      ]\n    },\n    {\n      \"type\": \"section\",\n      \"text\": {\n        \"type\": \"mrkdwn\",\n        \"text\": \"*Draft Response:*\\n{{$node[\\\"Claude_Intent_Analyzer\\\"].json.content[0].text}}\"\n      }\n    },\n    {\n      \"type\": \"actions\",\n      \"elements\": [\n        {\n          \"type\": \"button\",\n          \"text\": {\n            \"type\": \"plain_text\",\n            \"text\": \"Review in Gmail\"\n          },\n          \"url\": \"https://mail.google.com/mail/u/0/#search/{{$node[\\\"Gmail_Trigger\\\"].json.sender}}\"\n        }\n      ]\n    }\n  ]\n}"
+      },
+      "id": "Slack_Alert",
+      "name": "Slack Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        850,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{$env[\"TELEGRAM_BOT_TOKEN\"]}}/sendMessage",
+        "authentication": "none",
+        "contentType": "application/json",
+        "body": "={\n  \"chat_id\": \"={{$env[\\\"TELEGRAM_CHAT_ID\\\"]}}\",\n  \"text\": \"📧 <b>新客詢</b>\\n<b>來自:</b> {{$node[\\\"Gmail_Trigger\\\"].json.sender}}\\n<b>主旨:</b> {{$node[\\\"Gmail_Trigger\\\"].json.subject}}\\n\\n<b>回覆:</b>\\n{{$node[\\\"Claude_Intent_Analyzer\\\"].json.content[0].text}}\",\n  \"parse_mode\": \"HTML\"\n}"
+      },
+      "id": "Telegram_Notification",
+      "name": "Telegram Notification",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        850,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=YOUR_WEBHOOK_FOR_LOGGING",
+        "authentication": "none",
+        "contentType": "application/json",
+        "body": "={\n  \"timestamp\": \"={{new Date().toISOString()}}\",\n  \"from\": \"{{$node[\\\"Gmail_Trigger\\\"].json.sender}}\",\n  \"subject\": \"{{$node[\\\"Gmail_Trigger\\\"].json.subject}}\",\n  \"ai_response\": \"{{$node[\\\"Claude_Intent_Analyzer\\\"].json.content[0].text}}\"\n}"
+      },
+      "id": "Database_Log",
+      "name": "Database Log",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1050,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{$env[\"TELEGRAM_BOT_TOKEN\"]}}/sendMessage",
+        "authentication": "none",
+        "contentType": "application/json",
+        "body": "={\n  \"chat_id\": \"={{$env[\\\"TELEGRAM_CHAT_ID\\\"]}}\",\n  \"text\": \"❌ <b>Lead Responder Error</b>\\n{{$error.message}}\",\n  \"parse_mode\": \"HTML\"\n}"
+      },
+      "id": "Error_Handler",
+      "name": "Error Handler",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1050,
+        550
+      ]
+    }
+  ],
+  "connections": {
+    "Gmail_Trigger": {
+      "main": [
+        [
+          {
+            "node": "Claude_Intent_Analyzer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude_Intent_Analyzer": {
+      "main": [
+        [
+          {
+            "node": "Gmail_Draft_Creator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail_Draft_Creator": {
+      "main": [
+        [
+          {
+            "node": "Slack_Alert",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Telegram_Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack_Alert": {
+      "main": [
+        [
+          {
+            "node": "Database_Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram_Notification": {
+      "main": [
+        [
+          {
+            "node": "Database_Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "id": "2",
+  "meta": {
+    "instanceId": "00000000000000000000000000000000"
+  }
+}
